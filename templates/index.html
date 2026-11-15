@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sudoku</title>
+<style>
+  body { margin: 0; font-family: "Segoe UI", system-ui, sans-serif; background: #f4f7fb; color: #1f2328; }
+  main { max-width: 520px; margin: 0 auto; padding: 24px 16px 40px; text-align: center; }
+  h1 { margin: 0; font-size: 34px; color: #1d63ed; }
+  .sub { margin: 4px 0 18px; color: #57606a; }
+  .modes button, .actions button { font: inherit; border: 2px solid #1d63ed; background: #fff; color: #1d63ed;
+    border-radius: 8px; padding: 7px 16px; margin: 0 4px 12px; cursor: pointer; }
+  .modes button.active, .actions button:hover, .modes button:hover { background: #1d63ed; color: #fff; }
+  #board { display: grid; grid-template-columns: repeat(9, 1fr); width: min(450px, 94vw); margin: 0 auto;
+    border: 3px solid #1f2328; background: #fff; }
+  #board input { width: 100%; aspect-ratio: 1; box-sizing: border-box; border: 1px solid #c3cbd5; text-align: center;
+    font-size: clamp(18px, 5vw, 26px); color: #1d63ed; outline: none; padding: 0; border-radius: 0; }
+  #board input.given { color: #1f2328; font-weight: 700; background: #eef2f7; }
+  #board input.wrong { background: #ffd8d8; color: #b42318; }
+  #board input:focus { background: #fff8c5; }
+  #board input:nth-child(9n+4), #board input:nth-child(9n+7) { border-left: 3px solid #1f2328; }
+  #board input:nth-child(n+19):nth-child(-n+27), #board input:nth-child(n+46):nth-child(-n+54) { border-bottom: 3px solid #1f2328; }
+  .actions { margin-top: 16px; }
+  #message { min-height: 24px; font-weight: 600; }
+  footer { margin-top: 22px; font-size: 14px; color: #57606a; line-height: 1.7; }
+  code { background: #e7ecf2; border-radius: 4px; padding: 1px 6px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Sudoku</h1>
+  <p class="sub">Fill every row, column and 3 x 3 box with the numbers 1 to 9.</p>
+
+  <div class="modes">
+    {% for mode in modes %}<button data-mode="{{ mode }}" onclick="newGame('{{ mode }}')">{{ mode | capitalize }}</button>{% endfor %}
+  </div>
+
+  <div id="board"></div>
+
+  <div class="actions">
+    <button onclick="check()">Check</button>
+    <button onclick="clearMine()">Clear my numbers</button>
+  </div>
+  <p id="message"></p>
+
+  <footer>
+    This page came from container <code>{{ container }}</code><br>
+    This puzzle came from container <code id="served-by">...</code><br>
+    Version <code>{{ version }}</code>
+  </footer>
+</main>
+
+<script>
+const board = document.getElementById("board");
+const message = document.getElementById("message");
+
+// Draw the 9 x 9 board: 0 means an empty square the player fills in.
+function draw(grid) {
+  board.innerHTML = "";
+  grid.forEach((row, r) => row.forEach((value, c) => {
+    const cell = document.createElement("input");
+    cell.maxLength = 1;
+    cell.inputMode = "numeric";
+    cell.dataset.row = r;
+    cell.dataset.col = c;
+    if (value) { cell.value = value; cell.readOnly = true; cell.className = "given"; }
+    cell.addEventListener("input", () => {
+      cell.value = cell.value.replace(/[^1-9]/g, "");
+      cell.classList.remove("wrong");
+      message.textContent = "";
+    });
+    board.appendChild(cell);
+  }));
+}
+
+// Ask the app for a new puzzle. Behind a load balancer, any copy of the app can answer.
+async function newGame(mode) {
+  const response = await fetch("/api/new?mode=" + mode);
+  const data = await response.json();
+  draw(data.puzzle);
+  document.getElementById("served-by").textContent = data.served_by;
+  document.querySelectorAll(".modes button").forEach(b => b.classList.toggle("active", b.dataset.mode === mode));
+  message.textContent = "New " + mode + " puzzle. Good luck!";
+}
+
+// Mark every number you typed that clashes with another number in its row, column or box.
+function check() {
+  const cells = [...board.querySelectorAll("input")];
+  const at = (r, c) => cells[r * 9 + c].value;
+  let wrong = 0, empty = 0;
+  cells.forEach(cell => {
+    const r = +cell.dataset.row, c = +cell.dataset.col, v = cell.value;
+    cell.classList.remove("wrong");
+    if (!v) { empty++; return; }
+    let clash = false;
+    for (let i = 0; i < 9; i++) {
+      if (i !== c && at(r, i) === v) clash = true;           // same row
+      if (i !== r && at(i, c) === v) clash = true;           // same column
+    }
+    const top = r - r % 3, left = c - c % 3;
+    for (let i = top; i < top + 3; i++)
+      for (let j = left; j < left + 3; j++)
+        if ((i !== r || j !== c) && at(i, j) === v) clash = true;   // same 3 x 3 box
+    if (clash && !cell.readOnly) { cell.classList.add("wrong"); wrong++; }
+  });
+  if (wrong) message.textContent = wrong + " number(s) break a rule: they are marked in red.";
+  else if (empty) message.textContent = "No mistakes so far. " + empty + " square(s) to go.";
+  else message.textContent = "Solved! Every row, column and box has 1 to 9.";
+}
+
+function clearMine() {
+  board.querySelectorAll("input:not(.given)").forEach(cell => { cell.value = ""; cell.classList.remove("wrong"); });
+  message.textContent = "";
+}
+
+newGame("beginner");
+</script>
+</body>
+</html>

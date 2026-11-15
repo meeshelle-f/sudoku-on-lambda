@@ -1,0 +1,21 @@
+name: build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the image
+        run: docker build --provenance=false -t sudoku:ci .
+
+      - name: Start it and check it answers
+        run: |
+          docker run -d --name sudoku -p 8090:8080 sudoku:ci
+          sleep 3
+          curl -fsS http://127.0.0.1:8090/health
+          curl -fsS "http://127.0.0.1:8090/api/new?mode=beginner"
